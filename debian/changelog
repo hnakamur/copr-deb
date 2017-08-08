@@ -1,5 +1,5 @@
-copr (1.78-1) unstable; urgency=medium
+copr (1.78-1hnakamur1) xenial; urgency=medium
 
-  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+  * Initial release
 
  -- Hiroaki Nakamura <hnakamur@gmail.com>  Tue, 08 Aug 2017 12:48:08 +0900

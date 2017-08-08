@@ -1,30 +1,27 @@
 Source: copr
-Section: unknown
+Section: devel
 Priority: optional
 Maintainer: Hiroaki Nakamura <hnakamur@gmail.com>
-Build-Depends: debhelper (>=9),dh-python,python-all (>= 2.6.6-3~),python-setuptools,python3-all,python3-setuptools
+Build-Depends: debhelper (>=9),dh-python,python3-all,python3-setuptools,
+ python3-requests,python3-requests-toolbelt,python3-mock,python3-marshmallow
 Standards-Version: 3.9.6
-Homepage: <insert the upstream URL, if relevant>
+Homepage: https://pagure.io/copr/copr
 X-Python-Version: >= 2.6
 X-Python3-Version: >= 3.2
 #Vcs-Git: git://anonscm.debian.org/collab-maint/copr.git
 #Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/copr.git
 
-Package: python-copr
-Architecture: all
-Depends: ${python:Depends}, ${misc:Depends}
-Suggests: python-copr-doc
-Description: <insert up to 60 chars description> (Python 2)
- <insert long description, indented with spaces>
- .
- This package installs the library for Python 2.
-
 Package: python3-copr
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}
+Depends: ${python3:Depends}, ${misc:Depends},
+ python3-requests,python3-requests-toolbelt,python3-marshmallow
 Suggests: python-copr-doc
-Description: <insert up to 60 chars description> (Python 3)
- <insert long description, indented with spaces>
+Description: COPR is lightweight build system.
+ It allows you to create new project in WebUI,
+ and submit new builds and COPR will create yum repository from latest builds.
+ .
+ This package contains python interface to access Copr service. Mostly useful
+ for developers only.
  .
  This package installs the library for Python 3.
 
@@ -32,7 +29,11 @@ Package: python-copr-doc
 Architecture: all
 Section: doc
 Depends: ${sphinxdoc:Depends}, ${misc:Depends}
-Description: <insert up to 60 chars description> (common documentation)
- <insert long description, indented with spaces>
+Description: COPR is lightweight build system.
+ It allows you to create new project in WebUI,
+ and submit new builds and COPR will create yum repository from latest builds.
+ .
+ This package contains python interface to access Copr service. Mostly useful
+ for developers only.
  .
  This is the common documentation package.
