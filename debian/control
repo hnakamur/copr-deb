@@ -6,7 +6,6 @@ Build-Depends: debhelper (>=9),dh-python,python3-all,python3-setuptools,
  python3-requests,python3-requests-toolbelt,python3-mock,python3-marshmallow
 Standards-Version: 3.9.6
 Homepage: https://pagure.io/copr/copr
-X-Python-Version: >= 2.6
 X-Python3-Version: >= 3.2
 #Vcs-Git: git://anonscm.debian.org/collab-maint/copr.git
 #Vcs-Browser: https://anonscm.debian.org/cgit/collab-maint/copr.git
@@ -14,7 +13,7 @@ X-Python3-Version: >= 3.2
 Package: python3-copr
 Architecture: all
 Depends: ${python3:Depends}, ${misc:Depends},
- python3-requests,python3-requests-toolbelt,python3-marshmallow
+ python3-six,python3-requests,python3-requests-toolbelt,python3-marshmallow
 Suggests: python-copr-doc
 Description: COPR is lightweight build system.
  It allows you to create new project in WebUI,
