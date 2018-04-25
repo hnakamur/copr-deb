@@ -1,4 +1,0 @@
-marshmallow
-requests
-requests-toolbelt
-six

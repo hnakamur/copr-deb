@@ -68,6 +68,8 @@ SOURCE_TYPE_GIT_AND_TITO = 'git_and_tito'
 SOURCE_TYPE_MOCK_SCM = 'mock_scm'
 SOURCE_TYPE_PYPI = 'pypi'
 SOURCE_TYPE_RUBYGEMS = 'rubygems'
+SOURCE_TYPE_SCM = 'scm'
+SOURCE_TYPE_CUSTOM = 'custom'
 
 class CoprClient(UnicodeMixin):
     """ Main interface to the copr service
@@ -96,7 +98,7 @@ class CoprClient(UnicodeMixin):
         self.token = token
         self.login = login
         self.username = username
-        self.copr_url = copr_url or "http://copr.fedoraproject.org/"
+        self.copr_url = copr_url or "https://copr.fedorainfracloud.org/"
 
         self.no_config = no_config
 
@@ -158,6 +160,35 @@ class CoprClient(UnicodeMixin):
                     raise CoprConfigException(
                         "Bad configuration file: {0}".format(err))
         return CoprClient(**config)
+
+    def authentication_check(self):
+        url = "{0}/auth_check/".format(self.api_url)
+
+        try:
+            kwargs = {}
+            kwargs["auth"] = (self.login, self.token)
+
+            response = requests.request(
+                method="POST",
+                url=url,
+                **kwargs
+            )
+
+            log.debug("raw response: {0}".format(response.text))
+
+        except requests.ConnectionError as e:
+            log.error(e)
+            raise CoprRequestException("Connection error POST {0}".format(url))
+
+        if not response.status_code in [200, 404]:
+            try:
+                output = json.loads(response.text)
+            except ValueError:
+                raise CoprUnknownResponseException(
+                    "Unknown response from the server. Code: {0}, raw response:"
+                    " \n {1}".format(response.status_code, response.text))
+            raise CoprRequestException(output["error"])
+
 
     def _fetch(self, url, data=None, username=None, method=None,
                skip_auth=False, on_error_response=None, headers=None, params=None):
@@ -444,6 +475,8 @@ class CoprClient(UnicodeMixin):
 
                 - **builds_list**: list of :py:class:`~.responses.BuildWrapper`
         """
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
+
         data = {
             "memory_reqs": memory,
             "timeout": timeout,
@@ -477,6 +510,8 @@ class CoprClient(UnicodeMixin):
 
                 - **builds_list**: list of :py:class:`~.responses.BuildWrapper`
         """
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
+
         data = {
             "memory_reqs": memory,
             "timeout": timeout,
@@ -486,6 +521,44 @@ class CoprClient(UnicodeMixin):
             "spec": spec,
         }
         api_endpoint = "new_build_mock"
+        return self.process_creating_new_build(projectname, data, api_endpoint, username,
+                                               chroots, background=background)
+
+    def create_new_build_scm(self, projectname, clone_url, committish='', subdirectory='', spec='',
+                             scm_type='git', srpm_build_method='rpkg', username=None, timeout=None,
+                             memory=None, chroots=None, background=False, progress_callback=None):
+        """ Creates new build from SCM
+
+            :param projectname: name of Copr project (without user namespace)
+            :param clone_url: url to a project versioned by Git or SVN
+            :param committish [optional]: name of a branch, tag, or a git hash
+            :param subdirectory [optional]: repo subdirectory with package content
+            :param spec [optional]: path to spec file, relative to 'subdirectory'
+            :param scm_type [optional]: "git" or "svn"
+            :param srpm_build_method [optional]: tool to build srpm with. One of:
+                "rpkg", "tito", "tito_test", "make_srpm"
+            :param timeout: [optional] build timeout
+            :param memory: [optional] amount of required memory for build process
+            :param chroots: [optional] build only with given chroots
+            :param background: [optional] mark the build as a background job.
+            :param progress_callback: [optional] a function that received a
+            MultipartEncoderMonitor instance for each chunck of uploaded data
+
+            :return: :py:class:`~.responses.CoprResponse` with additional fields:
+
+                - **builds_list**: list of :py:class:`~.responses.BuildWrapper`
+        """
+        data = {
+            "memory_reqs": memory,
+            "timeout": timeout,
+            "clone_url": clone_url,
+            "committish": committish,
+            "subdirectory": subdirectory,
+            "spec": spec,
+            "scm_type": scm_type,
+            "srpm_build_method": srpm_build_method,
+        }
+        api_endpoint = "new_build_scm"
         return self.process_creating_new_build(projectname, data, api_endpoint, username,
                                                chroots, background=background)
 
@@ -515,6 +588,47 @@ class CoprClient(UnicodeMixin):
         api_endpoint = "new_build_rubygems"
         return self.process_creating_new_build(projectname, data, api_endpoint, username,
                                                chroots, background=background)
+
+
+    def create_new_build_custom(self, projectname,
+            script, script_chroot=None, script_builddeps=None,
+            script_resultdir=None,
+            username=None, timeout=None, memory=None, chroots=None,
+            background=False, progress_callback=None):
+        """ Creates new build with Custom source build method.
+
+            :param projectname: name of Copr project (without user namespace)
+            :param script: script to execute to generate sources
+            :param script_chroot: [optional] what chroot to use to generate
+                sources (defaults to fedora-latest-x86_64)
+            :param script_builddeps: [optional] list of script's dependencies
+            :param script_resultdir: [optional] where script generates results
+                (relative to cwd)
+            :param username: [optional] use alternative username
+            :param timeout: [optional] build timeout
+            :param memory: [optional] amount of required memory for build process
+            :param chroots: [optional] build only with given chroots
+            :param background: [optional] mark the build as a background job.
+            :param progress_callback: [optional] a function that received a
+            MultipartEncoderMonitor instance for each chunck of uploaded data
+
+            :return: :py:class:`~.responses.CoprResponse` with additional fields:
+
+                - **builds_list**: list of :py:class:`~.responses.BuildWrapper`
+        """
+        data = {
+            "memory_reqs": memory,
+            "timeout": timeout,
+            "script": script,
+            "chroot": script_chroot,
+            "builddeps": script_builddeps,
+            "resultdir": script_resultdir,
+        }
+
+        api_endpoint = "new_build_custom"
+        return self.process_creating_new_build(projectname, data, api_endpoint, username,
+                                               chroots, background=background)
+
 
     def create_new_build_distgit(self, projectname, clone_url, branch=None, username=None,
                               timeout=None, memory=None, chroots=None, background=False, progress_callback=None):
@@ -610,6 +724,7 @@ class CoprClient(UnicodeMixin):
         )
 
     def edit_package_tito(self, package_name, projectname, git_url, git_dir=None, git_branch=None, tito_test=None, ownername=None, webhook_rebuild=None):
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
         request_url = self.get_package_edit_url(ownername, projectname, package_name, SOURCE_TYPE_GIT_AND_TITO)
         data = {
             "package_name": package_name,
@@ -625,6 +740,7 @@ class CoprClient(UnicodeMixin):
         return response
 
     def add_package_tito(self, package_name, projectname, git_url, git_dir=None, git_branch=None, tito_test=None, ownername=None, webhook_rebuild=None):
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
         request_url = self.get_package_add_url(ownername, projectname, SOURCE_TYPE_GIT_AND_TITO)
         response = self.process_package_action(request_url, ownername, projectname, data={
             "package_name": package_name,
@@ -662,6 +778,7 @@ class CoprClient(UnicodeMixin):
         return response
 
     def edit_package_mockscm(self, package_name, projectname, scm_type, scm_url, scm_branch, spec, ownername=None, webhook_rebuild=None):
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
         request_url = self.get_package_edit_url(ownername, projectname, package_name, SOURCE_TYPE_MOCK_SCM)
         data = {
             "package_name": package_name,
@@ -677,6 +794,7 @@ class CoprClient(UnicodeMixin):
         return response
 
     def add_package_mockscm(self, package_name, projectname, scm_type, scm_url, scm_branch, spec, ownername=None, webhook_rebuild=None):
+        print('Deprecated method. Use generic "scm" methods instead.', file=sys.stderr)
         request_url = self.get_package_add_url(ownername, projectname, SOURCE_TYPE_MOCK_SCM)
         response = self.process_package_action(request_url, ownername, projectname, data={
             "package_name": package_name,
@@ -684,6 +802,39 @@ class CoprClient(UnicodeMixin):
             "scm_url": scm_url,
             "scm_branch": scm_branch,
             "spec": spec,
+            "webhook_rebuild": 'y' if webhook_rebuild else '',
+        })
+        return response
+
+    def edit_package_scm(self, package_name, projectname, clone_url, committish='', subdirectory='', spec='',
+                         scm_type='git', srpm_build_method='rpkg', ownername=None, webhook_rebuild=None):
+        request_url = self.get_package_edit_url(ownername, projectname, package_name, SOURCE_TYPE_SCM)
+        data = {
+            "package_name": package_name,
+            "clone_url": clone_url,
+            "committish": committish,
+            "subdirectory": subdirectory,
+            "spec": spec,
+            "scm_type": scm_type,
+            "srpm_build_method": srpm_build_method,
+        }
+        if webhook_rebuild != None:
+            data['webhook_rebuild'] = 'y' if webhook_rebuild else '' # TODO: False/True gets converted to 'False'/'True' in FE, try to solve better
+
+        response = self.process_package_action(request_url, ownername, projectname, data)
+        return response
+
+    def add_package_scm(self, package_name, projectname, clone_url, committish='', subdirectory='', spec='',
+                        scm_type='git', srpm_build_method='rpkg', ownername=None, webhook_rebuild=None):
+        request_url = self.get_package_add_url(ownername, projectname, SOURCE_TYPE_SCM)
+        response = self.process_package_action(request_url, ownername, projectname, data={
+            "package_name": package_name,
+            "clone_url": clone_url,
+            "committish": committish,
+            "subdirectory": subdirectory,
+            "spec": spec,
+            "scm_type": scm_type,
+            "srpm_build_method": srpm_build_method,
             "webhook_rebuild": 'y' if webhook_rebuild else '',
         })
         return response
@@ -707,6 +858,46 @@ class CoprClient(UnicodeMixin):
             "gem_name": gem_name,
             "webhook_rebuild": 'y' if webhook_rebuild else '',
         })
+        return response
+
+    def edit_package_custom(self, package_name, projectname,
+            script, script_chroot=None, script_builddeps=None,
+            script_resultdir=None,
+            ownername=None, webhook_rebuild=None):
+
+        request_url = self.get_package_edit_url(ownername, projectname,
+                package_name, SOURCE_TYPE_CUSTOM)
+
+        data = {
+            "package_name": package_name,
+            "script": script,
+            "builddeps": script_builddeps,
+            "resultdir": script_resultdir,
+            "chroot": script_chroot,
+        }
+        if webhook_rebuild != None:
+            data['webhook_rebuild'] = 'y' if webhook_rebuild else ''
+
+        response = self.process_package_action(request_url, ownername, projectname, data)
+        return response
+
+    def add_package_custom(self, package_name, projectname,
+            script, script_chroot=None, script_builddeps=None,
+            script_resultdir=None,
+            ownername=None, webhook_rebuild=None):
+
+        request_url = self.get_package_add_url(ownername, projectname,
+                SOURCE_TYPE_CUSTOM)
+        response = self.process_package_action(request_url, ownername,
+                projectname, data={
+                    "package_name": package_name,
+                    "script": script,
+                    "builddeps": script_builddeps,
+                    "resultdir": script_resultdir,
+                    "chroot": script_chroot,
+                    "webhook_rebuild": 'y' if webhook_rebuild else '',
+                },
+        )
         return response
 
     def process_package_action(self, request_url, ownername, projectname, data, fetch_functor=None):
@@ -1037,7 +1228,7 @@ class CoprClient(UnicodeMixin):
             description=None, instructions=None,
             repos=None, initial_pkgs=None, disable_createrepo=None,
             unlisted_on_hp=False, enable_net=True, persistent=False,
-            auto_prune=True
+            auto_prune=True, use_bootstrap_container=None,
     ):
         """ Creates a new copr project
             Auth required.
@@ -1052,6 +1243,7 @@ class CoprClient(UnicodeMixin):
             :param enable_net: [optional] If builder can access net for builds in this project
             :param persistent: [optional] If builds and the project are undeletable
             :param auto_prune: [optional] If backend auto-deletion script should be run for the project
+            :param use_bootstrap_container: [optional] If mock bootstrap container is used to initialize the buildroot
 
             :return: :py:class:`~.responses.CoprResponse`
                 with additional fields:
@@ -1089,6 +1281,7 @@ class CoprClient(UnicodeMixin):
             "build_enable_net": "y" if enable_net else "",
             "persistent": "y" if persistent else "",
             "auto_prune": "y" if auto_prune else "",
+            "use_bootstrap_container": "y" if use_bootstrap_container else "",
         }
         for chroot in chroots:
             request_data[chroot] = "y"
@@ -1111,7 +1304,8 @@ class CoprClient(UnicodeMixin):
     def modify_project(self, projectname, username=None,
                        description=None, instructions=None,
                        repos=None, disable_createrepo=None, unlisted_on_hp=None,
-                       enable_net=None, auto_prune=None):
+                       enable_net=None, auto_prune=None,
+                       use_bootstrap_container=None, chroots=None):
         """ Modifies main project configuration.
             Auth required.
 
@@ -1126,6 +1320,10 @@ class CoprClient(UnicodeMixin):
             :param unlisted_on_hp: [optional] Project will not be shown on COPR HP
             :param enable_net: [optional] If builder can access net for builds in this project
             :param auto_prune: [optional] If backend auto-deletion script should be run for the project
+            :param use_bootstrap_container: [optional] If mock bootstrap container is used to initialize the buildroot
+            :param chroots: [optional] list of chroots that should be enabled in the project. When not ``None``,
+                selected chroots will be enabled while current chroots
+                will not remain enabled if they are not specified.
 
             :return: :py:class:`~.responses.CoprResponse`
                 with additional fields:
@@ -1155,6 +1353,10 @@ class CoprClient(UnicodeMixin):
             data["build_enable_net"] = "y" if enable_net else ""
         if auto_prune != None:
             data["auto_prune"] = "y" if auto_prune else ""
+        if use_bootstrap_container != None:
+            data["use_bootstrap_container"] = "y" if use_bootstrap_container else ""
+        if chroots != None:
+            data["chroots"] = " ".join(chroots)
 
         result_data = self._fetch(url, data=data, method="post")
 
@@ -1479,14 +1681,17 @@ class CoprClient(UnicodeMixin):
         return response
 
     def build_module(self, modulemd, ownername=None, projectname=None):
-        endpoint = "module/build"
-        url = "{}/{}/".format(self.api_url, endpoint)
+        if not ownername:
+            ownername = self.username
 
-        data = {"copr_owner": ownername, "copr_project": projectname}
+        url = "{0}/coprs/{1}/{2}/module/build/".format(
+            self.api_url, ownername, projectname
+        )
+
         if isinstance(modulemd, io.BufferedIOBase):
-            data.update({"modulemd": (os.path.basename(modulemd.name), modulemd, "application/x-rpm")})
+            data = {"modulemd": (os.path.basename(modulemd.name), modulemd, "application/x-rpm")}
         else:
-            data.update({"scmurl": modulemd, "branch": "master"})
+            data = {"scmurl": modulemd, "branch": "master"}
 
         def fetch(url, data, method):
             m = MultipartEncoder(data)
@@ -1495,28 +1700,4 @@ class CoprClient(UnicodeMixin):
 
         # @TODO Refactor process_package_action to be general purpose
         response = self.process_package_action(url, None, None, data=data, fetch_functor=fetch)
-        return response
-
-    def make_module(self, projectname, modulemd, username=None, create=True, build=True):
-        api_endpoint = "module/make"
-        ownername = username if username else self.username
-        f = open(modulemd, "rb")
-        data = {
-            "modulemd": (os.path.basename(f.name), f, "application/x-rpm"),
-            "username": self.username,
-            "create": "y" if create else "",
-            "build": "y" if build else "",
-        }
-
-        url = "{0}/coprs/{1}/{2}/{3}/".format(
-            self.api_url, ownername, projectname, api_endpoint
-        )
-
-        def fetch(url, data, method):
-            m = MultipartEncoder(data)
-            monit = MultipartEncoderMonitor(m, lambda x: x)
-            return self._fetch(url, monit, method="post", headers={'Content-Type': monit.content_type})
-
-        # @TODO Refactor process_package_action to be general general purpose
-        response = self.process_package_action(url, ownername, projectname, data=data, fetch_functor=fetch)
         return response

@@ -3,18 +3,23 @@
 %global __python2 %{__python}
 %endif
 
-%if 0%{?fedora}
+%if 0%{?fedora} || 0%{?rhel} >= 8
 %global with_python3 1
 %else
 %global with_python3 0
 %endif
 
+%if 0%{?fedora} >= 28 || 0%{?rhel} >= 8
+%global with_python2 0
+%else
+%global with_python2 1
+%endif
+
 Name:       python-copr
-Version:    1.78
+Version:    1.87
 Release:    1%{?dist}
 Summary:    Python interface for Copr
 
-Group:      Applications/Productivity
 License:    GPLv2+
 URL:        https://pagure.io/copr/copr
 # Source is created by
@@ -24,8 +29,12 @@ URL:        https://pagure.io/copr/copr
 Source0: %{name}-%{version}.tar.gz
 
 BuildArch:  noarch
+
 BuildRequires: libxslt
 BuildRequires: util-linux
+
+%if 0%{?with_python2}
+%if 0%{?rhel} < 8 && 0%{?rhel} > 0
 BuildRequires: python-setuptools
 BuildRequires: python-requests
 BuildRequires: python-requests-toolbelt
@@ -34,28 +43,60 @@ BuildRequires: python-six >= 1.9.0
 BuildRequires: python-mock
 BuildRequires: pytest
 BuildRequires: python2-devel
-#for doc package
+# for doc package
 BuildRequires: python-sphinx
 BuildRequires: python-docutils
+%else
+BuildRequires: python2-setuptools
+BuildRequires: python2-requests
+BuildRequires: python2-requests-toolbelt
+BuildRequires: python2-marshmallow
+BuildRequires: python2-six >= 1.9.0
+BuildRequires: python2-mock
+BuildRequires: python2-pytest
+BuildRequires: python2-devel
+# for doc package
+BuildRequires: python2-sphinx
+BuildRequires: python2-docutils
+%endif
+%endif
 
+%global _description\
+COPR is lightweight build system. It allows you to create new project in WebUI,\
+and submit new builds and COPR will create yum repository from latest builds.\
+\
+This package contains python interface to access Copr service. Mostly useful\
+for developers only.\
+
+
+%description %_description
+
+%if 0%{?with_python2}
+%package -n python2-copr
+Summary: %summary
+
+%if 0%{?rhel} < 8 && 0%{?rhel} > 0
 Requires: python-setuptools
 Requires: python-six >= 1.9.0
 Requires: python-requests
 Requires: python-requests-toolbelt
 Requires: python-marshmallow
+%else
+Requires: python2-setuptools
+Requires: python2-six >= 1.9.0
+Requires: python2-requests
+Requires: python2-requests-toolbelt
+Requires: python2-marshmallow
+%endif
 
-%description
-COPR is lightweight build system. It allows you to create new project in WebUI,
-and submit new builds and COPR will create yum repository from latest builds.
+%{?python_provide:%python_provide python2-copr}
 
-This package contains python interface to access Copr service. Mostly useful
-for developers only.
-
+%description -n python2-copr %_description
+%endif # with_python2
 
 %if 0%{?with_python3}
 %package -n python3-copr
 Summary:        Python interface for Copr
-Group:          Applications/Productivity
 
 BuildRequires: python3-devel
 BuildRequires: python3-setuptools
@@ -65,6 +106,9 @@ BuildRequires: python3-requests
 BuildRequires: python3-requests-toolbelt
 BuildRequires: python3-marshmallow
 BuildRequires: python3-six
+BuildRequires: python3-pylint
+BuildRequires: python3-sphinx
+BuildRequires: python3-docutils
 
 Requires: python3-setuptools
 Requires: python3-six
@@ -72,8 +116,7 @@ Requires: python3-requests
 Requires: python3-requests-toolbelt
 Requires: python3-marshmallow
 
-#for check
-BuildRequires: python3-pylint
+%{?python_provide:%python_provide python3-copr}
 
 %description -n python3-copr
 COPR is lightweight build system. It allows you to create new project in WebUI,
@@ -81,7 +124,6 @@ and submit new builds and COPR will create yum repository from latest builds.
 
 This package contains python interface to access Copr service. Mostly useful
 for developers only.
-
 
 %endif # with_python3
 
@@ -105,22 +147,18 @@ developers only.
 %if 0%{?with_python3}
 rm -rf %{py3dir}
 cp -a . %{py3dir}
-find %{py3dir} -name '*.py' | xargs sed -i '1s|^#!python|#!%{__python3}|'
 %endif # with_python3
-
-find -name '*.py' | xargs sed -i '1s|^#!python|#!%{__python2}|'
-
 
 %build
-CFLAGS="%{optflags}" %{__python2} setup.py build
-
 %if 0%{?with_python3}
 pushd %{py3dir}
-
 CFLAGS="%{optflags}" %{__python3} setup.py build
-
 popd
 %endif # with_python3
+
+%if 0%{?with_python2}
+CFLAGS="%{optflags}" %{__python2} setup.py build
+%endif # with_python2
 
 mv copr/README.rst ./
 
@@ -140,8 +178,10 @@ find %{buildroot}%{python3_sitelib} -name '*.exe' | xargs rm -f
 popd
 %endif # with_python3
 
+%if 0%{?with_python2}
 %{__python2} setup.py install --skip-build --root %{buildroot}
 find %{buildroot}%{python2_sitelib} -name '*.exe' | xargs rm -f
+%endif # with_python2
 
 #doc
 install -d %{buildroot}%{_pkgdocdir}/
@@ -153,23 +193,16 @@ cp -a docs/_build/html %{buildroot}%{_pkgdocdir}/
 %check
 %if 0%{?with_python3}
 python3-pylint copr/*py copr/client/ copr/client_v2/ || :
-%endif
-
-%{__python2} -m pytest copr/test
-
-%if 0%{?with_python3}
 pushd %{py3dir}
 %{__python3} -m pytest copr/test
-popd
 %endif # with_python3
+
+%if 0%{?with_python2}
+%{__python2} -m pytest copr/test
+%endif # with_python2
 
 # compatibility for RHEL <= 6
 %{!?_licensedir:%global license %%doc}
-
-%files
-%license LICENSE
-%doc README.rst
-%{python_sitelib}/*
 
 %if 0%{?with_python3}
 %files -n python3-copr
@@ -178,6 +211,13 @@ popd
 %{python3_sitelib}/*
 %endif # with_python3
 
+%if 0%{?with_python2}
+%files -n python2-copr
+%license LICENSE
+%doc README.rst
+%{python_sitelib}/*
+%endif # with_python2
+
 %if 0%{?fedora}
 %files -n python-copr-doc
 %license LICENSE
@@ -185,6 +225,46 @@ popd
 %endif
 
 %changelog
+* Wed Feb 28 2018 clime <clime@redhat.com> 1.87-1
+- add missing frontend states to clientv2
+
+* Fri Feb 23 2018 clime <clime@redhat.com> 1.86-1
+- remove Group tag
+
+* Mon Feb 19 2018 clime <clime@redhat.com> 1.85-1
+- build python2-copr package conditionally
+- Remove unnecessary shebang sed in copr-cli.spec and python-copr.spec
+- fix deps in spec
+- new custom source method
+- use username from config if nothing is explicitly specified
+- remove outdated modularity code
+- require to specify project when building module
+
+* Fri Nov 10 2017 clime <clime@redhat.com> 1.84-1
+- update clients to use https://copr.fedorainfracloud.org as default
+  API endpoint
+
+* Thu Nov 09 2017 clime <clime@redhat.com> 1.83-1
+- Remove duplicated Python packagtes, using "." in requirements.txt
+- Add classifiers to support Python3.
+- allow to set use_bootstrap_container via API
+
+* Wed Oct 18 2017 clime <clime@redhat.com> 1.82-1
+- add SCM api
+- add deprecation warnings for tito and mockscm methods
+
+* Fri Sep 15 2017 clime <clime@redhat.com> 1.81-1
+- Bug 1431035 - coprs should check credentials before uploading
+  source rpm Remove unnecesary condition
+- Spelling fixes
+
+* Mon Aug 21 2017 Miroslav Suchý <msuchy@redhat.com> 1.80-1
+- rename python-copr to python2-copr
+
+* Fri Aug 11 2017 clime <clime@redhat.com> 1.79-1
+- allow to modify copr chroots
+- always send name of the user
+
 * Fri Jun 09 2017 clime <clime@redhat.com> 1.78-1
 - pag#67 copr edit-package-tito nulls out fields not edited
 
@@ -435,7 +515,7 @@ popd
 - 1063311 - admin should be able to delete task
 - [frontend] Stray end tag h4.
 - [frontend] another s/coprs/projects/ rename
-- [frontend] provide info about last successfull build
+- [frontend] provide info about last successful build
 - [spec] rhel5 needs group definition even in subpackage
 - [frontend] move 'you agree' text to dd
 - [frontend] add margin to chroots-set
@@ -504,7 +584,7 @@ popd
 - add build deletion
 - 1044158 - do not require fas username prior to login
 - replace http with https in copr-cli and in generated repo file
-- [cli] UX changes - explicitely state that pkgs is URL
+- [cli] UX changes - explicitly state that pkgs is URL
 - 1053142 - only build copr-cli on el6
 - [frontend] correctly handle mangled chroot
 - [frontend] do not traceback when user malform url
@@ -525,7 +605,7 @@ popd
 
 * Wed Jan 08 2014 Miroslav Suchý <msuchy@redhat.com> 1.21-1
 - 1049460 - correct error message
-- [cron] manualy clean /var/tmp after createrepo
+- [cron] manually clean /var/tmp after createrepo
 
 * Wed Jan 08 2014 Miroslav Suchý <msuchy@redhat.com> 1.20-1
 - [cli] no need to set const with action=store_true
